@@ -11,19 +11,15 @@ import pandas as pd
 import os
 import seaborn as sb
 import matplotlib.pyplot as pyplot
-from sklearn.model_selection import train_test_split, GridSearchCV
-from sklearn.linear_model import Lasso, LassoCV
-from sklearn.metrics import mean_squared_error
-from sklearn.preprocessing import scale 
+from sklearn.model_selection import train_test_split, GridSearchCV, RepeatedKFold, KFold
+from sklearn.linear_model import Lasso, LassoCV, Ridge, LinearRegression
+from sklearn.preprocessing import scale, PolynomialFeatures
 from sklearn import ensemble, preprocessing
 import statsmodels.api as sm
 from mlxtend.feature_selection import SequentialFeatureSelector as sfs
 from sklearn.metrics import accuracy_score as acc
-from sklearn.model_selection import RepeatedKFold
-from sklearn import linear_model
-from sklearn.model_selection import RepeatedKFold
-from sklearn.linear_model import Ridge
-from sklearn import neural_network
+from sklearn import linear_model, neural_network
+from sklearn.pipeline import make_pipeline
 ###############################################################################
 '''
 You should submit a one page summary (including any tables, figures, formulas, 
@@ -235,7 +231,50 @@ surfaces? Perhaps this can help classify the flat land cover classes like
 pool and concrete. Of course all these variables are working together,
 I am only trying to make sense of the variables for my own understanding.
 '''
-##################################################################
+###############################################################################
+# Hypothesis: test for difference of means
+X = pd.concat([X_train, X_test])
+lab = pd.concat([y_train, y_test])
+
+# get  unique  labels
+unilab = np.unique(lab)
+# number  of  unique  labs
+n_labs = len(unilab)
+X.columns
+y = X['NDVI_40']
+# check  for  equal  variances
+var_gr = np.zeros(n_labs)
+for j in  range(n_labs):
+    var_gr[j] = np.var(y[lab == unilab[j]])
+    
+# no  group  variance is more  than  
+# twice  any  other?
+np.max(var_gr) > 2*np.min(var_gr) 
+# True so to test for difference of means we need to bootstrap
+
+def F(y, lab):
+    N = len(y)
+    [uni, nj] = np.unique(lab, return_counts = True)
+    K = len(nj)
+    ybar = np.mean(y)
+    ybar_gr = np.zeros(K)
+    for k in range(K):
+        ybar_gr[k] = np.mean(y[lab == uni[k]])
+    ssmod = np.sum(nj*np.power(ybar_gr - ybar, 2))
+    sserr = 0
+    for k in range(K):
+        sserr = sserr + np.sum(np.power(y[lab == uni[k]] - ybar_gr[k], 2))
+    return((ssmod/(K-1))/(sserr/(N-K)))
+Fstat = F(y, lab)
+# Bootstrapping  the  hypothesis  test
+B = 10000
+F_boot = np.zeros(B)
+for j in  range(B):
+    lab_boot = np.random.permutation(lab)
+    F_boot[j] = F(y, lab_boot)
+    
+p_boot = np.mean(F_boot > Fstat)
+###############################################################################
 # Pollution and Mortality Rate data
 ###############################################################################
 # Read in data
@@ -269,9 +308,10 @@ freq      5    6   11     6   11     6  ...     4     6    7    6    11     2
 
 [4 rows x 16 columns]
 '''
+
 # Some of these variables, such as JULT, POPN, and HUMID do not vary so much
-# from year to year. However, response variable does. See that out of 119 values,
-# there are 111 unique values. 
+# from year to year. However, the response variable does. See that out of 119 
+# values, there are 111 unique values. 
 
 pollution_df.info()
 '''
@@ -390,11 +430,6 @@ x = np.asarray(pollution_df["SO"])
 order = np.argsort(x)
 x = x[order]
 y = y[order]
-
-from sklearn.preprocessing import PolynomialFeatures
-from sklearn.linear_model import LinearRegression
-from sklearn.pipeline import make_pipeline
-from sklearn.model_selection import KFold
 
 nf = len(y)
 kf = KFold(n_splits=nf,shuffle=True)
