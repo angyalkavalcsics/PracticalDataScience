@@ -9,7 +9,7 @@ Created on Fri Dec  3 21:38:36 2021
 import numpy as np
 import pandas as pd
 import os
-import seaborn as sns
+import seaborn as sb
 import matplotlib.pyplot as pyplot
 from sklearn.model_selection import train_test_split, GridSearchCV
 from sklearn.linear_model import Lasso, LassoCV
@@ -19,6 +19,11 @@ from sklearn import ensemble, preprocessing
 import statsmodels.api as sm
 from mlxtend.feature_selection import SequentialFeatureSelector as sfs
 from sklearn.metrics import accuracy_score as acc
+from sklearn.model_selection import RepeatedKFold
+from sklearn import linear_model
+from sklearn.model_selection import RepeatedKFold
+from sklearn.linear_model import Ridge
+from sklearn import neural_network
 ###############################################################################
 '''
 You should submit a one page summary (including any tables, figures, formulas, 
@@ -39,10 +44,8 @@ land_test = pd.read_csv(path+"/testing.csv")
 '''
 Initial thoughts: perform classification + feature selection.
 This could be a classification random forest with tuned hyperparameters. 
-I would argue that rf falls in the feature selection category as well.
 
 This or the next data may be the best choice for resampling/hypothesis test.
-Thinking back to the iris problem--check variance. 
 '''
 # find unique classes
 np.unique(land_train['class'])
@@ -57,6 +60,23 @@ X_train = land_train.iloc[:,1:]
 y_train = land_train.iloc[:, 0]
 X_test= land_test.iloc[:,1:]
 y_test = land_test.iloc[:, 0]
+
+# Descriptive analysis
+land_train.describe()
+'''
+            class     BrdIndx         Area       Round  ...   Assym_140    NDVI_140  BordLngth_140    GLCM3_140
+count  168.000000  168.000000   168.000000  168.000000  ...  168.000000  168.000000     168.000000   168.000000
+mean     3.839286    2.008512   565.869048    1.132976  ...    0.615357    0.014583     983.309524  1275.292917
+std      2.452740    0.634807   679.852886    0.489150  ...    0.239900    0.153677     880.013745   603.658611
+min      0.000000    1.000000    10.000000    0.020000  ...    0.070000   -0.360000      56.000000   336.730000
+25%      2.000000    1.537500   178.000000    0.787500  ...    0.460000   -0.080000     320.000000   817.405000
+50%      4.000000    1.920000   315.000000    1.085000  ...    0.620000   -0.040000     776.000000  1187.025000
+75%      6.000000    2.375000   667.000000    1.410000  ...    0.810000    0.120000    1412.500000  1588.427500
+max      8.000000    4.190000  3659.000000    2.890000  ...    1.000000    0.350000    6232.000000  3806.360000
+
+[8 rows x 148 columns]
+'''
+land_train.head()
 ###############################################################################
 # Random Forest classification 
 # Tune hyperparameters of RF using GridSearchCV
@@ -188,6 +208,7 @@ for i in np.argsort(feature_importances)[::-1]:
 	ShpIndx_100: 0.134
 	Rect: 0.074
 '''
+
 # Feature Importance plot
 fig, ax = pyplot.subplots(figsize=(12, 7.5))
 pyplot.rcParams['font.size'] = '12'
@@ -232,12 +253,208 @@ names = ['PREC', 'JANT', 'JULT', 'OVR65', 'POPN', 'EDUC', 'HOUS', 'DENS',
          'NONW', 'WWDRK', 'POOR', 'HC', 'NOX', 'SO', 'HUMID', 'MORT']
 pollution_df = pd.DataFrame(build, columns = names)
 '''
-Initial thoughts: there are definitely some non-linear terms that we could
-fit a spline to here. Prediction of mortality rate would be valuable. 
-Possibly linear regression with Ridge pentaly and CV, see if there are 
-non-linear relationships using pairplot, and go from there.
+Initial thoughts: may be able to find some non-linear terms here. 
+Prediction of mortality rate would be valuable. 
+Possibly linear regression with Ridge pentaly, see if there are 
+non-linear relationships using polynomial regression, and go from there.
+'''
+# Descriptive analysis
+pollution_df.describe()
+'''
+       PREC JANT JULT OVR65 POPN  EDUC  ...  POOR    HC  NOX   SO HUMID  MORT
+count   119  119  119   119  119   119  ...   119   119  119  119   119   119
+unique   75   52   48    83   52    85  ...    81    60   83  103    71   111
+top     36.  30.  72.    1.  56.  11.4  ...  3.32  11.1   4.   1.   56.  45.5
+freq      5    6   11     6   11     6  ...     4     6    7    6    11     2
+
+[4 rows x 16 columns]
+'''
+# Some of these variables, such as JULT, POPN, and HUMID do not vary so much
+# from year to year. However, response variable does. See that out of 119 values,
+# there are 111 unique values. 
+
+pollution_df.info()
+'''
+<class 'pandas.core.frame.DataFrame'>
+RangeIndex: 119 entries, 0 to 118
+Data columns (total 16 columns):
+ #   Column  Non-Null Count  Dtype 
+---  ------  --------------  ----- 
+ 0   PREC    119 non-null    object
+ 1   JANT    119 non-null    object
+ 2   JULT    119 non-null    object
+ 3   OVR65   119 non-null    object
+ 4   POPN    119 non-null    object
+ 5   EDUC    119 non-null    object
+ 6   HOUS    119 non-null    object
+ 7   DENS    119 non-null    object
+ 8   NONW    119 non-null    object
+ 9   WWDRK   119 non-null    object
+ 10  POOR    119 non-null    object
+ 11  HC      119 non-null    object
+ 12  NOX     119 non-null    object
+ 13  SO      119 non-null    object
+ 14  HUMID   119 non-null    object
+ 15  MORT    119 non-null    object
+dtypes: object(16)
+memory usage: 15.0+ KB
 '''
 
+# need to convert these to numeric
+pollution_df = pollution_df.apply(pd.to_numeric)
+
+# pair plot
+sb.pairplot(pollution_df) # doesn't look very helpful/ no polynomial rel.
+
+# split into train/test -- 20% reserved for testing
+X_train, X_test, y_train, y_test = train_test_split(\
+        pollution_df.iloc[:, 0:15], pollution_df.iloc[:, 15], test_size=0.2)
+###############################################################################
+# Ridge Regression and tuning of L2 penalty
+model = Ridge()
+# define model evaluation method
+cv = RepeatedKFold(n_splits=10, n_repeats=3, random_state=1)
+# define grid
+grid = dict()
+grid['alpha'] = np.arange(1000, 2000, 1) 
+# interval endpoints picked by trial/error
+# define search
+import sklearn
+sorted(sklearn.metrics.SCORERS.keys())
+search = GridSearchCV(model, grid, scoring='neg_mean_squared_error', cv=cv, n_jobs=-1)
+# ignore the negative sign in the score -- for optimization purposes only
+# perform the search
+results = search.fit(X_train, y_train)
+# summarize
+print('MSE: %.3f' % results.best_score_)
+print('Config: %s' % results.best_params_)
+# Alpha is so large, this may not be the best model for the data.
+# This is because a large alpha will shrink coefficients near zero.
+# We know that as \alpha \to \infty, the coefficients approach 0. 
+
+# Let's get a visual to see if this is the case
+best_model = Ridge(alpha=1733)
+best_model.fit(X_train, y_train)
+best_model.coef_
+
+c = pd.DataFrame(best_model.coef_, index = X_train.columns, columns= ['coefs'])
+ridge_feature = c.index[np.nonzero(np.array(c))[0]]
+ridge_coefs = c.iloc[np.nonzero(np.array(c))[0]]
+
+fig, ax = pyplot.subplots(figsize=(12, 7.5))
+pyplot.rcParams['font.size'] = '12'
+ax.barh(list(ridge_feature), list(ridge_coefs.iloc[:,0]))
+pyplot.xlabel('Coefficient')
+pyplot.ylabel('Feature')
+ax.set_title('Ridge Feature Importance', fontsize=16)
+pyplot.show()
+
+# Actually, looks okay. Let's see the train/test MSE.
+y_train_pred = best_model.predict(X_train)
+np.mean((y_train - y_train_pred)**2)
+# 1272.56
+y_test_pred = best_model.predict(X_test)
+np.mean((y_test - y_test_pred)**2)
+# 3007.48
+
+'''
+What has been learned from these results? 
+The average tempurature in Jan, July, and avg annual precip.
+have the most influence on mortality rate. Then ext most important
+variables are avg. household size, med. school years completed,
+non-white pop., % employed white collar, % poor, nitric oxides, and
+annual humidity. 
+
+Climate such as heat waves, cold, and heavy rain have all been
+proven to cause accidents or result in more deaths. Humidity can
+help viruses spread or exacerbate effects of climate. Moreover,
+the societal variables shown to be important in this model have
+been proven to have an affect on mortality as well. Lastly,
+Nitric oxide is colourless and is oxidised in the atmosphere 
+to form nitrogen dioxide which is an acidic and highly corrosive 
+gas that can affect mortality.
+'''
+###############################################################################
+# can we do better? 
+# If we do not care for interpretation and only prediction of 
+# mortality--a neural network would surely provide better
+# results than the Ridge model above. 
+###############################################################################
+# First though, I read in a paper while researching the variables above
+# that sulfur dioxide has a non-linear relationship with mortality. 
+# Clearly, sulfur dioxide is dangerous, why did our model not pick up 
+# on this? Can we show a non-linear relationship using our data?
+y = np.asarray(pollution_df["MORT"])
+x = np.asarray(pollution_df["SO"])
+
+order = np.argsort(x)
+x = x[order]
+y = y[order]
+
+from sklearn.preprocessing import PolynomialFeatures
+from sklearn.linear_model import LinearRegression
+from sklearn.pipeline import make_pipeline
+from sklearn.model_selection import KFold
+
+nf = len(y)
+kf = KFold(n_splits=nf,shuffle=True)
+ds = np.linspace(2, 6, 5)
+
+cv_err = np.zeros(len(ds))
+for d in range(len(ds)):
+    for train_index, test_index in kf.split(range(nf)):
+        polyreg = make_pipeline(
+        PolynomialFeatures(degree=d),
+        LinearRegression()
+        )
+
+        polyreg.fit(x.reshape(-1,1), y)
+
+        # prediction
+        yhat = polyreg.predict(x.reshape(-1,1))
+        cv_err[d] = np.mean(np.power(y[test_index]-yhat,2))
+opt_deg = ds[np.argmin(cv_err)] # 2
+
+polyreg = make_pipeline(
+        PolynomialFeatures(degree=int(opt_deg)),
+        LinearRegression()
+        )
+
+polyreg.fit(x.reshape(-1,1), y)
+
+# prediction
+yhat = polyreg.predict(x.reshape(-1,1))
+
+pyplot.plot(x, y,'k.')
+pyplot.plot(x,yhat,'b-')
+
+# I'm not sure about this. The data is very much hot/cold with its measurements
+# for sulfur oxide. Perhaps as spline would fit this better.
+
+import scipy.interpolate as interpolate
+t, c, k = interpolate.splrep(x, y, s=100, k=3, t =[4, 6, 8, 10])
+
+N = 100
+xmin, xmax = x.min(), x.max()
+xs = np.linspace(xmin, xmax, N)
+spline = interpolate.BSpline(t, c, k, extrapolate=False)
+
+pyplot.plot(x, y, 'k.')
+pyplot.plot(xs, spline(xs), 'b')
+
+# It definitely looks like a spline with degree 3 would predict this
+# (have lower MSE) better than the polynomial regression with degree 2. 
+###############################################################################
+# Fit a NN to pollution data
+m = neural_network.MLPRegressor(
+    hidden_layer_sizes=(10),
+    learning_rate_init = 0.001,
+    max_iter = 10000)
+
+m.fit(X_train,y_train)
+# mean test error
+1 - m.score(X_test, y_test) # 0.01
+# a 1 percent test error is not bad at all
 ###############################################################################
 # Zoology data
 ###############################################################################
@@ -245,7 +462,7 @@ non-linear relationships using pairplot, and go from there.
 path = "C:/Users/angya/.spyder-py3/STA596_final_data/Zoo"
 zoo = pd.read_csv(path+"/zoo.csv")
 '''
-Initial thoughts: use a Neural Network for this. Perhaps some type of network 
+Initial thoughts: Perhaps some type of network 
 analysis or clustering. 
 '''
 
