@@ -25,6 +25,7 @@ from scipy.cluster.hierarchy import dendrogram, linkage
 from sklearn.decomposition import PCA
 import scipy.spatial.distance as ssd
 from sklearn.cluster import AgglomerativeClustering
+import networkx as nx
 ###############################################################################
 '''
 You should submit a one page summary (including any tables, figures, formulas, 
@@ -636,6 +637,35 @@ data points.
 
 On the other classes however the model got close to or perfect classification. 
 '''
+###############################################################################
+# Network analysis of zoo data
+
+cutoff = np.mean(pd.DataFrame(jac_sim).median())
+cutoff
+
+'''
+Here is my idea: if jaccard similarity between entities (animals) is >=
+to the cut off value above, we enter a 1 in the adjacency matrix and 0 otherwise. 
+
+May want to experiment with this cut off a little, i'll start with using the
+min of these and maybe also try the median of the medians.
+'''
+
+A = (jac_sim >= cutoff)*1
+
+G = nx.convert_matrix.from_numpy_matrix(A) 
+nx.draw(G, node_size=5)
+
+kawai = nx.kamada_kawai_layout(G)
+nx.draw(G, kawai, node_size = 10)
+
+
+
+
+
+
+
+
 
 
 
