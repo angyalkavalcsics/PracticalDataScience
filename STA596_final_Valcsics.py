@@ -701,6 +701,11 @@ pyplot.title("Zoo Classification via Network Clustering")
 pyplot.xlabel("Class Label")
 pyplot.ylabel("Frequency")
 pyplot.show()
+# I guess this does not look too bad but since theres only 5
+# clusters so the last two never get picked
+# It is almost like it perfectly clusters the first two labels
+# then erroneously tries distributing the rest of the animals
+# among the last 3 classes
 
 # Specifically, this plot worries me
 pyplot.scatter(U[:,0],U[:,1], c = color_vec, cmap='rainbow')
