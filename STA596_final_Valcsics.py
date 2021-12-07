@@ -608,6 +608,7 @@ pca = PCA(2)
 pca.fit(one_hot) 
 pca.components_  
 
+# i'm counting this as utilizing svd (hopefully that is okay)
 U = pca.transform(one_hot)
 np.shape(U)
 
