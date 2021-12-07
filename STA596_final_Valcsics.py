@@ -639,10 +639,6 @@ On the other classes however the model got close to or perfect classification.
 '''
 ###############################################################################
 # Network analysis of zoo data
-
-cutoff = np.mean(pd.DataFrame(jac_sim).median())
-cutoff
-
 '''
 Here is my idea: if jaccard similarity between entities (animals) is >=
 to the cut off value above, we enter a 1 in the adjacency matrix and 0 otherwise. 
@@ -651,21 +647,74 @@ May want to experiment with this cut off a little, i'll start with using the
 min of these and maybe also try the median of the medians.
 '''
 
+cutoff = np.min(pd.DataFrame(jac_sim).median())
+cutoff
+
+cutoff = np.mean(pd.DataFrame(jac_sim).median())
+cutoff
+
+import statistics
+cutoff = statistics.median(pd.DataFrame(jac_sim).median())
+cutoff
+
+cutoff = np.mean(pd.DataFrame(jac_sim).mean())
+cutoff
+
+cutoff = 0.5
+cutoff = 0.45
+
+# The cutoff controls the density of the model, it is 
+# kind of like a hyperparameter that needs to be optimized/chosen 
+# carefully. I'm not sure I like any of these but the last one.
+# A cut off of 0.5 is too high -- the graph becomes disconnected.
+# Perhaps, somewhere between 0.4 and 0.5 would be best. 
+
 A = (jac_sim >= cutoff)*1
+G = nx.convert_matrix.from_numpy_matrix(A)
+nx.draw(G,nx.spring_layout(G), node_size = 20)
 
-G = nx.convert_matrix.from_numpy_matrix(A) 
-nx.draw(G, node_size=5)
+# pip install python-louvain
 
-kawai = nx.kamada_kawai_layout(G)
-nx.draw(G, kawai, node_size = 10)
+import community
+# find the clusters 
+partition = community.best_partition(G)
+s = set(partition.values())
+num_clusters_found = len(s) 
+num_clusters_found
+# we need a vector with the cluster ids to show clusters using color in a plot
+color_vec = list(partition.values())
+# to plot labels, you need a dictionary
+labels2 = {a:a for a in list(nx.nodes(G))} 
+nx.draw(G,pos=nx.spring_layout(G),node_color=color_vec,labels=labels2,font_size=10,alpha=.6 )
 
+# color_vec is our predicted class for each node
+np.mean(np.power(y_act - color_vec, 2)) # 6.368
+(y_act - color_vec) == 0
+# When I ran the algorithm, I got 5 clusters. 
+# It is surprising to me that this mse is much lower
+# and I wonder about the validity of what I'm doing
 
+# Generate plot
+pyplot.hist([y_act, color_vec], label=['actual classification', 'predicted'])
+pyplot.legend(loc='upper right')
+pyplot.title("Zoo Classification via Network Clustering")
+pyplot.xlabel("Class Label")
+pyplot.ylabel("Frequency")
+pyplot.show()
 
+# Specifically, this plot worries me
+pyplot.scatter(U[:,0],U[:,1], c = color_vec, cmap='rainbow')
 
+# plot degree distribution
+def plot_degree_dist(G):
+    degrees = [G.degree(n) for n in G.nodes()]
+    pyplot.hist(degrees)
+    pyplot.show()
 
+plot_degree_dist(G)
 
-
-
-
-
-
+num_triangles = int(sum(nx.triangles(G).values()) / 3)
+num_triangles # 21842
+# Hence there are 21842 triangles in the data. This means that 
+# This means that there are significant amount of triad relationships
+# in the data. 
