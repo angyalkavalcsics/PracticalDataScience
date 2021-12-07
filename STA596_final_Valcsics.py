@@ -20,6 +20,11 @@ from mlxtend.feature_selection import SequentialFeatureSelector as sfs
 from sklearn.metrics import accuracy_score as acc
 from sklearn import linear_model, neural_network
 from sklearn.pipeline import make_pipeline
+from sklearn.metrics.pairwise import pairwise_distances
+from scipy.cluster.hierarchy import dendrogram, linkage
+from sklearn.decomposition import PCA
+import scipy.spatial.distance as ssd
+from sklearn.cluster import AgglomerativeClustering
 ###############################################################################
 '''
 You should submit a one page summary (including any tables, figures, formulas, 
@@ -500,5 +505,136 @@ zoo = pd.read_csv(path+"/zoo.csv")
 Initial thoughts: Perhaps some type of network 
 analysis or clustering. 
 '''
+# Descriptive analysis
+zoo.describe()
+'''
+             hair    feathers        eggs  ...    domestic     catsize  class_type
+count  144.000000  144.000000  144.000000  ...  144.000000  144.000000  144.000000
+mean     0.305556    0.138889    0.708333  ...    0.125000    0.416667    3.430556
+std      0.462250    0.347038    0.456116  ...    0.331873    0.494727    2.137421
+min      0.000000    0.000000    0.000000  ...    0.000000    0.000000    1.000000
+25%      0.000000    0.000000    0.000000  ...    0.000000    0.000000    1.000000
+50%      0.000000    0.000000    1.000000  ...    0.000000    0.000000    3.000000
+75%      1.000000    0.000000    1.000000  ...    0.000000    1.000000    5.250000
+max      1.000000    1.000000    1.000000  ...    1.000000    1.000000    7.000000
 
+[8 rows x 17 columns]
+'''
+zoo.info()
+'''
+<class 'pandas.core.frame.DataFrame'>
+RangeIndex: 144 entries, 0 to 143
+Data columns (total 18 columns):
+ #   Column       Non-Null Count  Dtype 
+---  ------       --------------  ----- 
+ 0   animal_name  144 non-null    object
+ 1   hair         144 non-null    int64 
+ 2   feathers     144 non-null    int64 
+ 3   eggs         144 non-null    int64 
+ 4   milk         144 non-null    int64 
+ 5   airborne     144 non-null    int64 
+ 6   aquatic      144 non-null    int64 
+ 7   predator     144 non-null    int64 
+ 8   toothed      144 non-null    int64 
+ 9   backbone     144 non-null    int64 
+ 10  breathes     144 non-null    int64 
+ 11  venomous     144 non-null    int64 
+ 12  fins         144 non-null    int64 
+ 13  legs         144 non-null    int64 
+ 14  tail         144 non-null    int64 
+ 15  domestic     144 non-null    int64 
+ 16  catsize      144 non-null    int64 
+ 17  class_type   144 non-null    int64 
+dtypes: int64(17), object(1)
+memory usage: 20.4+ KB
+'''
+# How is the class type distributed?
+pyplot.hist(zoo['class_type'])
+
+'''
+Thinking about similarity measures for this... 
+
+We have just binary vectors--I will one-hot encode the legs variable.
+
+After some research, perhaps the jaccard coefficient would work well 
+for this binary data. For each variable/data point, the value is 1 if the animal
+has the quality we are interested in and 0 if not--i.e. positive/negative states. 
+This means that our binary variables are asymmetric attributes, I would argue
+that we only care if the animal has the quality that we are interested in.
+
+Let's see how similar the variables are first. 
+'''
+# one-hot encode the legs variable 
+zoo_reduced = zoo.iloc[:, 1:]
+one_hot = pd.get_dummies(zoo_reduced, columns = ['legs'])
+one_hot = one_hot.T
+# heatmap of jaccard
+jac_sim = 1 - pairwise_distances(one_hot, metric = "hamming")
+jac_sim = pd.DataFrame(jac_sim, one_hot.columns, columns=one_hot.columns)
+
+fig = pyplot.figure(num=None, figsize=(10, 10), dpi=80, facecolor='w', edgecolor='k')
+sb.heatmap(jac_sim, annot=True, annot_kws={"size": 8}, 
+            xticklabels=jac_sim.columns.values,
+            yticklabels=jac_sim.columns.values)
+pyplot.title("Jaccard Similarity of Zoo variables")
 ###############################################################################
+# Hierarchical clustering of zoo data
+# I will pass in a distance matrix using Jaccard dissimilarity (so diag is 0)
+
+one_hot = one_hot.T
+jac_sim = pairwise_distances(one_hot, metric = "hamming")
+
+# first produce a dendrogram
+# convert the redundant n*n square matrix form into a condensed nC2 array
+d = ssd.squareform(jac_sim)
+Z = linkage(d, 'single')
+
+pyplot.figure(figsize=(10, 7))
+dendrogram(Z,
+            orientation='top',
+            labels=None,
+            distance_sort='descending',
+            show_leaf_counts=True)
+pyplot.show()
+# This had trouble -- only found 6 classes instead of 7
+
+# now, I want the actual labels
+model = AgglomerativeClustering(affinity='precomputed', n_clusters=7, linkage='single').fit(jac_sim)
+print(model.labels_)
+np.shape(model.labels_)
+
+# use pca to produce a plot
+pca = PCA(2) 
+pca.fit(one_hot) 
+pca.components_  
+
+U = pca.transform(one_hot)
+np.shape(U)
+
+pyplot.scatter(U[:,0],U[:,1],c= model.labels_, cmap='rainbow')
+
+y_act = zoo_reduced['class_type'] - 1
+np.mean(np.power(y_act - model.labels_, 2)) # 11.0
+
+# Generate plot
+pyplot.hist([y_act, model.labels_], label=['actual classification', 'predicted'])
+pyplot.legend(loc='upper right')
+pyplot.title("Zoo Classification via Clustering")
+pyplot.xlabel("Class Label")
+pyplot.ylabel("Frequency")
+pyplot.show()
+
+'''
+Thoughts: Not too bad. The model certainly struggled to classify
+the 4th and 6th classes -- amphibians and mollusks (?)
+
+Instead it overclassified animals into the 3rd class, fish. 
+Which, to some extent, is forgivable. There is not much of a difference
+in characteristics between these types of animals and there are not many
+data points.
+
+On the other classes however the model got close to or perfect classification. 
+'''
+
+
+
