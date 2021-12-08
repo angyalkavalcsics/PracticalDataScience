@@ -716,6 +716,22 @@ pyplot.show()
 
 # Specifically, this plot worries me
 pyplot.scatter(U[:,0],U[:,1], c = color_vec, cmap='rainbow')
+# I take that back actually and will explain below why
+
+# Here's the issue with this, kmeans is using euclidean distance.
+# If our classes were able to be clustered accurately by distance then
+# this would be great. 
+from sklearn.cluster import KMeans
+kmeans = KMeans(n_clusters=7, random_state=0).fit(U)
+kmeans.labels_[:20]
+
+pyplot.scatter(U[:,0],U[:,1], c = list(kmeans.labels_), cmap='rainbow')
+
+pred = list(kmeans.labels_)
+np.mean(np.power(y_act - pred, 2)) # 4.138
+t = (y_act - pred == 0)*1
+np.sum(t)/len(pred) # 0.472
+
 
 # plot degree distribution
 def plot_degree_dist(G):
@@ -730,18 +746,3 @@ num_triangles # 21842
 # Hence there are 21842 triangles in the data. This means that 
 # This means that there are significant amount of triad relationships
 # in the data. 
-
-
-from sklearn.cluster import KMeans
-kmeans = KMeans(n_clusters=7, random_state=0).fit(U)
-kmeans.labels_[:20]
-
-pyplot.scatter(U[:,0],U[:,1], c = list(kmeans.labels_), cmap='rainbow')
-
-pred = list(kmeans.labels_)
-np.mean(np.power(y_act - pred, 2)) # 4.138
-t = (y_act - pred == 0)*1
-np.sum(t)/len(pred) # 0.472
-
-
-
