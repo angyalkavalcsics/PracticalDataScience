@@ -26,6 +26,7 @@ from sklearn.decomposition import PCA
 import scipy.spatial.distance as ssd
 from sklearn.cluster import AgglomerativeClustering
 import networkx as nx
+from sklearn.metrics import confusion_matrix
 ###############################################################################
 '''
 You should submit a one page summary (including any tables, figures, formulas, 
@@ -582,13 +583,16 @@ pyplot.title("Jaccard Similarity of Zoo variables")
 # Hierarchical clustering of zoo data
 # I will pass in a distance matrix using Jaccard dissimilarity (so diag is 0)
 
+# The Hamming distance between two binary vectors is the number of elements 
+# that are not equal.
+
 one_hot = one_hot.T
 jac_sim = pairwise_distances(one_hot, metric = "hamming")
 
 # first produce a dendrogram
 # convert the redundant n*n square matrix form into a condensed nC2 array
 d = ssd.squareform(jac_sim)
-Z = linkage(d, 'single')
+Z = linkage(d, 'complete')
 
 pyplot.figure(figsize=(10, 7))
 dendrogram(Z,
@@ -597,10 +601,9 @@ dendrogram(Z,
             distance_sort='descending',
             show_leaf_counts=True)
 pyplot.show()
-# This had trouble -- only found 6 classes instead of 7
 
 # now, I want the actual labels
-model = AgglomerativeClustering(affinity='precomputed', n_clusters=7, linkage='single').fit(jac_sim)
+model = AgglomerativeClustering(affinity='precomputed', n_clusters=7, linkage='complete').fit(jac_sim)
 print(model.labels_)
 np.shape(model.labels_)
 
@@ -616,9 +619,10 @@ np.shape(U)
 pyplot.scatter(U[:,0],U[:,1],c= model.labels_, cmap='rainbow')
 
 y_act = zoo_reduced['class_type'] - 1
-np.mean(np.power(y_act - model.labels_, 2)) # 11.0
+np.mean(np.power(y_act - model.labels_, 2)) # 1.8194
 t = (y_act - model.labels_ == 0)*1
-np.sum(t)/len(model.labels_) # note: I can back here to find this 0.006
+np.sum(t)/len(model.labels_) # classification accuracy: 0.514
+
 # Generate plot
 pyplot.hist([y_act, model.labels_], label=['actual classification', 'predicted'])
 pyplot.legend(loc='upper right')
@@ -626,17 +630,36 @@ pyplot.title("Zoo Classification via Clustering")
 pyplot.xlabel("Class Label")
 pyplot.ylabel("Frequency")
 pyplot.show()
+# the proportions looks okay but perhaps the plot is misleading about which 
+# values were correctly classified
+
+# let's see the confusion matrix to get a better idea
+confusion_matrix(y_act, model.labels_)
+'''
+array([[41,  0,  0,  0,  0,  0,  0],
+       [ 0,  0,  0, 20,  0,  0,  0],
+       [ 0,  6, 11,  0,  0,  0,  0],
+       [ 0, 20,  0,  0,  0,  0,  0],
+       [ 0,  0, 10,  0,  0,  0,  0],
+       [ 0,  0,  0,  0,  0, 20,  0],
+       [ 0,  0,  0,  0, 14,  0,  2]], dtype=int64)
 
 '''
-Thoughts: Not too bad. The model certainly struggled to classify
-the 4th and 6th classes -- amphibians and mollusks (?)
+np.unique(y_act, return_counts=True)
 
-Instead it overclassified animals into the 3rd class, fish. 
-Which, to some extent, is forgivable. There is not much of a difference
-in characteristics between these types of animals and there are not many
-data points.
+'''
+(array([0, 1, 2, 3, 4, 5, 6], dtype=int64),
+ array([41, 20, 17, 20, 10, 20, 16], dtype=int64))
 
-On the other classes however the model got close to or perfect classification. 
+The model did a perfect job on classes 0 and 5. It grouped all of the 1st and 
+3rd class together but with the wrong label. Those two red dots in the plot were
+grouped correctly as class 6. 
+
+I tried a few other approaches that I didn't show here but they did not 
+perform as well.
+
+A NN would definitely work better but this clustering approach 
+is interesting. 
 '''
 ###############################################################################
 # Network analysis of zoo data
@@ -698,8 +721,6 @@ np.sum(t*1)
 np.sum(t*1)/len(color_vec) # approx. 29% accuracy
 
 # When I ran the algorithm, I got 5 clusters. 
-# It is surprising to me that this mse is much lower
-# and I wonder about the validity of what I'm doing
 
 # Generate plot
 pyplot.hist([y_act, color_vec], label=['actual classification', 'predicted'])
@@ -708,8 +729,6 @@ pyplot.title("Zoo Classification via Network Clustering")
 pyplot.xlabel("Class Label")
 pyplot.ylabel("Frequency")
 pyplot.show()
-# I guess this does not look too bad but since theres only 5
-# clusters so the last two never get picked
 
 # Note that the plot above, just because it classifies the perfect number of
 # nodes as class 0 for example, it doesn't mean that all of them are correct
@@ -722,6 +741,7 @@ pyplot.scatter(U[:,0],U[:,1], c = color_vec, cmap='rainbow')
 # If our classes were able to be clustered accurately by distance then
 # this would be great. 
 from sklearn.cluster import KMeans
+
 kmeans = KMeans(n_clusters=7, random_state=0).fit(U)
 kmeans.labels_[:20]
 
@@ -732,6 +752,13 @@ np.mean(np.power(y_act - pred, 2)) # 4.138
 t = (y_act - pred == 0)*1
 np.sum(t)/len(pred) # 0.472
 
+
+from sklearn.cluster import SpectralClustering
+clustering = SpectralClustering(n_clusters=7,
+         affinity='precomputed').fit(1-jac_sim)
+clustering.labels_
+
+confusion_matrix(y_act, clustering.labels_)
 
 # plot degree distribution
 def plot_degree_dist(G):
