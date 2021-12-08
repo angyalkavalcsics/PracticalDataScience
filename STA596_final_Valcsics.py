@@ -617,7 +617,8 @@ pyplot.scatter(U[:,0],U[:,1],c= model.labels_, cmap='rainbow')
 
 y_act = zoo_reduced['class_type'] - 1
 np.mean(np.power(y_act - model.labels_, 2)) # 11.0
-
+t = (y_act - model.labels_ == 0)*1
+np.sum(t)/len(model.labels_) # note: I can back here to find this 0.006
 # Generate plot
 pyplot.hist([y_act, model.labels_], label=['actual classification', 'predicted'])
 pyplot.legend(loc='upper right')
@@ -676,7 +677,9 @@ nx.draw(G,nx.spring_layout(G), node_size = 20)
 # pip install python-louvain
 
 import community
-# find the clusters 
+# Find the clusters 
+# Computes the partition of the graph nodes which maximises the modularity
+# uses Louvain algorithm. This is the partition of highest modularity. 
 partition = community.best_partition(G)
 s = set(partition.values())
 num_clusters_found = len(s) 
@@ -689,7 +692,11 @@ nx.draw(G,pos=nx.spring_layout(G),node_color=color_vec,labels=labels2,font_size=
 
 # color_vec is our predicted class for each node
 np.mean(np.power(y_act - color_vec, 2)) # 6.368
-(y_act - color_vec) == 0
+t = (y_act - color_vec) == 0
+np.sum(t*1)
+# okay -- it only accurately classified 42 animals
+np.sum(t*1)/len(color_vec) # approx. 29% accuracy
+
 # When I ran the algorithm, I got 5 clusters. 
 # It is surprising to me that this mse is much lower
 # and I wonder about the validity of what I'm doing
@@ -703,9 +710,9 @@ pyplot.ylabel("Frequency")
 pyplot.show()
 # I guess this does not look too bad but since theres only 5
 # clusters so the last two never get picked
-# It is almost like it perfectly clusters the first two labels
-# then erroneously tries distributing the rest of the animals
-# among the last 3 classes
+
+# Note that the plot above, just because it classifies the perfect number of
+# nodes as class 0 for example, it doesn't mean that all of them are correct
 
 # Specifically, this plot worries me
 pyplot.scatter(U[:,0],U[:,1], c = color_vec, cmap='rainbow')
@@ -723,3 +730,18 @@ num_triangles # 21842
 # Hence there are 21842 triangles in the data. This means that 
 # This means that there are significant amount of triad relationships
 # in the data. 
+
+
+from sklearn.cluster import KMeans
+kmeans = KMeans(n_clusters=7, random_state=0).fit(U)
+kmeans.labels_[:20]
+
+pyplot.scatter(U[:,0],U[:,1], c = list(kmeans.labels_), cmap='rainbow')
+
+pred = list(kmeans.labels_)
+np.mean(np.power(y_act - pred, 2)) # 4.138
+t = (y_act - pred == 0)*1
+np.sum(t)/len(pred) # 0.472
+
+
+
