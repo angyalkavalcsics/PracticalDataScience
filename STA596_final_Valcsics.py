@@ -21,6 +21,7 @@ from sklearn.metrics import accuracy_score as acc
 from sklearn import linear_model, neural_network
 from sklearn.pipeline import make_pipeline
 from sklearn.metrics.pairwise import pairwise_distances
+from scipy.spatial.distance import pdist, jaccard
 from scipy.cluster.hierarchy import dendrogram, linkage
 from sklearn.decomposition import PCA
 import scipy.spatial.distance as ssd
@@ -642,6 +643,8 @@ zoo_reduced = zoo.iloc[:, 1:]
 one_hot = pd.get_dummies(zoo_reduced, columns = ['legs'])
 one_hot = one_hot.T
 # heatmap of jaccard
+# sklearn's jaccard_similarity_score is not equal to 1 - sklearn's 
+# jaccard distance but it is equal to 1 - sklearn's hamming distance. 
 jac_sim = 1 - pairwise_distances(one_hot, metric = "hamming")
 jac_sim = pd.DataFrame(jac_sim, one_hot.index, columns=one_hot.index)
 
@@ -652,13 +655,25 @@ sb.heatmap(jac_sim, annot=True, annot_kws={"size": 8},
 pyplot.title("Jaccard Similarity of Zoo variables")
 ###############################################################################
 # Hierarchical clustering of zoo data
-# I will pass in a distance matrix using Jaccard dissimilarity (so diag is 0)
 
+# I will pass in a distance matrix
 # The Hamming distance between two binary vectors is the number of elements 
 # that are not equal.
 
 one_hot = one_hot.T
-jac_dissim = pairwise_distances(one_hot, metric = "hamming")
+jac_dissim = pairwise_distances(one_hot, metric = 'hamming')
+
+from scipy.spatial import distance
+
+mat = np.array(np.array(one_hot))
+def pairwise_jaccard(X):
+    X = X.astype(bool).astype(int)
+    intrsct = X.dot(X.T)
+    row_sums = intrsct.diagonal()
+    unions = row_sums[:,None] + row_sums - intrsct
+    dist = 1.0 - intrsct / unions
+    return dist
+dist = pairwise_jaccard(mat)
 
 # first produce a dendrogram
 # convert the redundant n*n square matrix form into a condensed nC2 array
@@ -689,7 +704,7 @@ U = pca.transform(one_hot)
 np.shape(U)
 
 pyplot.scatter(U[:,0],U[:,1],c= model.labels_, cmap='rainbow')
-pyplot.title("Agglomerative Clustering -- Jaccard Distance")
+pyplot.title("Agglomerative Clustering -- Hamming Distance")
 
 y_act = zoo_reduced['class_type'] - 1
 np.mean(np.power(y_act - model.labels_, 2)) # 1.8194
@@ -744,6 +759,7 @@ May want to experiment with this cut off a little, i'll start with using the
 min of these and maybe also try the median of the medians.
 '''
 
+jac_sim = 1 - pairwise_distances(one_hot, metric = "hamming")
 cutoff = np.min(pd.DataFrame(jac_sim).median())
 cutoff
 
@@ -755,22 +771,21 @@ cutoff = statistics.median(pd.DataFrame(jac_sim).median())
 cutoff
 
 cutoff = np.mean(pd.DataFrame(jac_sim).mean())
-cutoff
+cutoff # 0.64
 
-cutoff = 0.5
-cutoff = 0.45
+cutoff = 0.75
 
 # The cutoff controls the density of the model, it is 
 # kind of like a hyperparameter that needs to be optimized/chosen 
 # carefully. I'm not sure I like any of these but the last one.
 # A cut off of 0.5 is too high -- the graph becomes disconnected.
 # Perhaps, somewhere between 0.4 and 0.5 would be best. 
-
-A = (jac_dissim >= cutoff)*1
+jac_sim = np.array(jac_sim)
+A = (jac_sim >= cutoff)*1
 G = nx.convert_matrix.from_numpy_matrix(A)
 pyplot.figure(figsize=(10,5))
 ax = pyplot.gca()
-ax.set_title("Graph plot -- Jaccard Dissimilarity >= 0.45")
+ax.set_title("Graph plot -- Jaccard Similarity >= 0.75")
 nx.draw(G,nx.spring_layout(G), node_size = 20)
 
 # pip install python-louvain
@@ -794,14 +809,25 @@ ax.set_title("Graph plot -- Best partition clustering")
 nx.draw(G,pos=nx.spring_layout(G),node_color=color_vec,labels=labels2,font_size=10,alpha=.6 )
 
 # color_vec is our predicted class for each node
-np.mean(np.power(y_act - color_vec, 2)) # 6.222
+np.mean(np.power(y_act - color_vec, 2)) # 6.4375
 t = (y_act - color_vec) == 0
-np.sum(t*1)
-# okay -- it only accurately classified 33 animals
-np.sum(t*1)/len(color_vec) # approx. 23% accuracy
-
+np.sum(t*1) # 27
+# okay -- it only accurately classified 27 animals
+np.sum(t*1)/len(color_vec) # approx. 18.75% accuracy
+np.unique(color_vec)
 # When I ran the algorithm, I got 5 clusters. 
 
+confusion_matrix(y_act, color_vec)
+
+'''
+array([[ 0, 41,  0,  0,  0,  0,  0],
+       [20,  0,  0,  0,  0,  0,  0],
+       [ 4,  4,  9,  0,  0,  0,  0],
+       [ 0,  0, 20,  0,  0,  0,  0],
+       [ 1,  0,  4,  5,  0,  0,  0],
+       [ 0,  0,  0, 20,  0,  0,  0],
+       [ 0,  0,  1, 15,  0,  0,  0]], dtype=int64)
+'''
 # Generate plot
 pyplot.hist([y_act, color_vec], label=['actual classification', 'predicted'])
 pyplot.legend(loc='upper right')
@@ -813,11 +839,9 @@ pyplot.show()
 # Note that the plot above, just because it classifies the perfect number of
 # nodes as class 0 for example, it doesn't mean that all of them are correct
 
-# Specifically, this plot worries me
 pyplot.scatter(U[:,0],U[:,1], c = color_vec, cmap='rainbow')
-# I take that back actually and will explain below why
 
-# Here's the issue with this, kmeans is using euclidean distance.
+# Here's the issue kmeans, it is using euclidean distance.
 # If our classes were able to be clustered accurately by distance then
 # this would be great. 
 from sklearn.cluster import KMeans
@@ -831,21 +855,34 @@ np.mean(np.power(y_act - pred, 2)) # 4.138
 t = (y_act - pred == 0)*1
 np.sum(t)/len(pred) # 0.472
 
+confusion_matrix(y_act, pred)
+# see that is perfectly groups the clusters but gets the labels wrong
+
+'''
+array([[41,  0,  0,  0,  0,  0,  0],
+       [ 0,  0,  0, 20,  0,  0,  0],
+       [ 0,  0, 17,  0,  0,  0,  0],
+       [ 0,  0,  0,  0,  0,  0, 20],
+       [ 0,  0,  0,  0, 10,  0,  0],
+       [ 0, 20,  0,  0,  0,  0,  0],
+       [ 0,  0,  0,  0,  0, 16,  0]], dtype=int64)
+'''
+
 # an experiment with spectral clustering using jaccard similarity
 from sklearn.cluster import SpectralClustering
 clustering = SpectralClustering(n_clusters=7,
-         affinity='precomputed').fit(1-jac_sim)
+         affinity='precomputed').fit(jac_sim)
 clustering.labels_
 
 confusion_matrix(y_act, clustering.labels_)
 '''
-array([[21,  0,  0,  0,  1, 19,  0],
-       [ 0,  0, 20,  0,  0,  0,  0],
-       [ 6,  0,  0,  0,  0,  0, 11],
+array([[38,  0,  2,  0,  1,  0,  0],
        [ 0,  0,  0, 20,  0,  0,  0],
-       [ 0,  0,  0,  0,  0,  0, 10],
+       [ 0,  0,  6,  0,  0, 11,  0],
+       [ 0,  0, 10,  0,  0,  0, 10],
+       [ 0,  0,  0,  0,  0, 10,  0],
        [ 0, 20,  0,  0,  0,  0,  0],
-       [ 2,  4,  0,  0, 10,  0,  0]], dtype=int64)
+       [ 0,  6,  0,  0, 10,  0,  0]], dtype=int64)
 '''
 
 # plot degree distribution
@@ -857,7 +894,7 @@ pyplot.title("Degree Distribution of Zoo Network")
 # Number of triangles
 
 num_triangles = int(sum(nx.triangles(G).values()) / 3)
-num_triangles # 21842
-# Hence there are 21842 triangles in the data. This means that 
-# This means that there are significant amount of triad relationships
-# in the data. 
+num_triangles # 15801
+# Hence there are 15801 triangles in the data. This means that 
+# This means that there are significant amount of direct links between 3 of 
+# animals in the data. 
