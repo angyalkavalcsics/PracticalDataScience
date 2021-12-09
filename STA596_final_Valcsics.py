@@ -643,7 +643,7 @@ one_hot = pd.get_dummies(zoo_reduced, columns = ['legs'])
 one_hot = one_hot.T
 # heatmap of jaccard
 jac_sim = 1 - pairwise_distances(one_hot, metric = "hamming")
-jac_sim = pd.DataFrame(jac_sim, one_hot.columns, columns=one_hot.columns)
+jac_sim = pd.DataFrame(jac_sim, one_hot.index, columns=one_hot.index)
 
 fig = pyplot.figure(num=None, figsize=(10, 10), dpi=80, facecolor='w', edgecolor='k')
 sb.heatmap(jac_sim, annot=True, annot_kws={"size": 8}, 
@@ -658,11 +658,11 @@ pyplot.title("Jaccard Similarity of Zoo variables")
 # that are not equal.
 
 one_hot = one_hot.T
-jac_sim = pairwise_distances(one_hot, metric = "hamming")
+jac_dissim = pairwise_distances(one_hot, metric = "hamming")
 
 # first produce a dendrogram
 # convert the redundant n*n square matrix form into a condensed nC2 array
-d = ssd.squareform(jac_sim)
+d = ssd.squareform(jac_dissim)
 Z = linkage(d, 'complete')
 
 pyplot.figure(figsize=(10, 7))
@@ -671,10 +671,11 @@ dendrogram(Z,
             labels=None,
             distance_sort='descending',
             show_leaf_counts=True)
+pyplot.title("Dendrogram of Zoo -- hamming distance")
 pyplot.show()
 
 # now, I want the actual labels
-model = AgglomerativeClustering(affinity='precomputed', n_clusters=7, linkage='complete').fit(jac_sim)
+model = AgglomerativeClustering(affinity='precomputed', n_clusters=7, linkage='complete').fit(jac_dissim)
 print(model.labels_)
 np.shape(model.labels_)
 
@@ -688,6 +689,7 @@ U = pca.transform(one_hot)
 np.shape(U)
 
 pyplot.scatter(U[:,0],U[:,1],c= model.labels_, cmap='rainbow')
+pyplot.title("Agglomerative Clustering -- Jaccard Distance")
 
 y_act = zoo_reduced['class_type'] - 1
 np.mean(np.power(y_act - model.labels_, 2)) # 1.8194
@@ -764,8 +766,11 @@ cutoff = 0.45
 # A cut off of 0.5 is too high -- the graph becomes disconnected.
 # Perhaps, somewhere between 0.4 and 0.5 would be best. 
 
-A = (jac_sim >= cutoff)*1
+A = (jac_dissim >= cutoff)*1
 G = nx.convert_matrix.from_numpy_matrix(A)
+pyplot.figure(figsize=(10,5))
+ax = pyplot.gca()
+ax.set_title("Graph plot -- Jaccard Dissimilarity >= 0.45")
 nx.draw(G,nx.spring_layout(G), node_size = 20)
 
 # pip install python-louvain
@@ -782,14 +787,18 @@ num_clusters_found
 color_vec = list(partition.values())
 # to plot labels, you need a dictionary
 labels2 = {a:a for a in list(nx.nodes(G))} 
+
+pyplot.figure(figsize=(10,5))
+ax = pyplot.gca()
+ax.set_title("Graph plot -- Best partition clustering")
 nx.draw(G,pos=nx.spring_layout(G),node_color=color_vec,labels=labels2,font_size=10,alpha=.6 )
 
 # color_vec is our predicted class for each node
-np.mean(np.power(y_act - color_vec, 2)) # 6.368
+np.mean(np.power(y_act - color_vec, 2)) # 6.222
 t = (y_act - color_vec) == 0
 np.sum(t*1)
-# okay -- it only accurately classified 42 animals
-np.sum(t*1)/len(color_vec) # approx. 29% accuracy
+# okay -- it only accurately classified 33 animals
+np.sum(t*1)/len(color_vec) # approx. 23% accuracy
 
 # When I ran the algorithm, I got 5 clusters. 
 
@@ -840,12 +849,12 @@ array([[21,  0,  0,  0,  1, 19,  0],
 '''
 
 # plot degree distribution
-def plot_degree_dist(G):
-    degrees = [G.degree(n) for n in G.nodes()]
-    pyplot.hist(degrees)
-    pyplot.show()
 
-plot_degree_dist(G)
+degrees = [G.degree(n) for n in G.nodes()]
+pyplot.hist(degrees)
+pyplot.title("Degree Distribution of Zoo Network")
+
+# Number of triangles
 
 num_triangles = int(sum(nx.triangles(G).values()) / 3)
 num_triangles # 21842
