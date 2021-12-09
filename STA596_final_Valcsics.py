@@ -560,13 +560,14 @@ clf.fit(X_train, y_train)
 print('Best parameters found:\n', clf.best_params_)
 '''
 Best parameters found:
- {'activation': 'logistic', 'hidden_layer_sizes': (20, 10), 'learning_rate_init': 0.001}
-'''
+ {'activation': 'logistic', 'alpha': 1e-05, 
+  'hidden_layer_sizes': (20, 10), 'learning_rate_init': 0.001}
+ '''
 # mean train error
 1 - clf.score(X_train, y_train) # 0.009
 # mean test error
-1 - clf.score(X_test, y_test) # 0.00766
-# test error is not bad at all
+1 - clf.score(X_test, y_test) # 0.008
+# test error is not bad but not better than ridge
 ###############################################################################
 # Zoology data
 ###############################################################################
