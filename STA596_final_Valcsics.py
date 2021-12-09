@@ -13,7 +13,7 @@ import seaborn as sb
 import matplotlib.pyplot as pyplot
 from sklearn.model_selection import train_test_split, GridSearchCV, RepeatedKFold, KFold
 from sklearn.linear_model import Lasso, LassoCV, Ridge, LinearRegression
-from sklearn.preprocessing import scale, PolynomialFeatures
+from sklearn.preprocessing import scale, PolynomialFeatures, StandardScaler
 from sklearn import ensemble, preprocessing
 import statsmodels.api as sm
 from mlxtend.feature_selection import SequentialFeatureSelector as sfs
@@ -51,7 +51,7 @@ This could be a classification random forest with tuned hyperparameters.
 This or the next data may be the best choice for resampling/hypothesis test.
 '''
 # find unique classes
-np.unique(land_train['class'])
+np.unique(land_train['class'], return_counts = True)
 # map classes to numeric representation in both train/test data
 le = preprocessing.LabelEncoder()
 le.fit(land_train['class'])
@@ -93,7 +93,7 @@ clf = ensemble.RandomForestClassifier()
 
 clf_tuned = GridSearchCV(estimator=clf,
                             param_grid=param_grid,
-                            cv=5,
+                            cv=10,
                             n_jobs=-1,
                             verbose=2)
 
@@ -110,7 +110,7 @@ y_test_pred = clf_best.predict(X_test)
 print('Training accuracy on selected features: %.3f' % acc(y_train, y_train_pred)) 
 # 100%
 print('Training accuracy on selected features: %.3f' % acc(y_test, y_test_pred)) 
-# 80.1%
+# 80.7%
 # Perhaps this overfit the training set.
 
 # Find/sort most important features
@@ -121,30 +121,59 @@ feature_importances = np.mean([
 feat_importance = []
 feature_names = []
 for i in np.argsort(feature_importances)[::-1]:
+    if feature_importances[i] < 0.01: # to make the plot easier to read
+        break
     feature_names.append(X_train.columns[i])
     feat_importance.append(feature_importances[i])
     print(f'\t{X_train.columns[i]}: {feature_importances[i]:.3f}')
   
 ''' just some: (to validate my next move)
-    NDVI: 0.120
-	NDVI_40: 0.078
-	Bright_80: 0.046
-	NDVI_60: 0.042
-	Bright_100: 0.025
-	Mean_G: 0.023
+	NDVI: 0.133
+	NDVI_40: 0.080
+	NDVI_60: 0.044
+	Bright_100: 0.028
+	Bright_80: 0.027
+	SD_G: 0.023
 	NDVI_80: 0.022
-	SD_G: 0.021
-	BrdIndx_80: 0.021
 	Area_60: 0.020
-	Mean_R_80: 0.019
-	ShpIndx_140: 0.017
-	Mean_NIR_40: 0.017
+	Mean_NIR_80: 0.019
+	Mean_G: 0.019
+	BrdIndx_80: 0.018
+	Mean_R_40: 0.016
+	ShpIndx_80: 0.016
+	SD_G_80: 0.015
+	Mean_G_80: 0.014
+	BordLngth: 0.013
+	ShpIndx_120: 0.013
+	Bright_120: 0.012
+	Mean_R_80: 0.012
+	Bright_140: 0.012
+	Area: 0.012
+	Area_40: 0.012
+	Mean_NIR_120: 0.011
+	Mean_R: 0.011
+	Mean_NIR_40: 0.011
+	ShpIndx_140: 0.011
+	Mean_G_40: 0.011
+	Mean_NIR_140: 0.011
+	Compact: 0.011
+	ShpIndx_100: 0.010
+	Mean_NIR_100: 0.010
 	...
 '''
+
+# Feature Importance plot
+fig, ax = pyplot.subplots(figsize=(12, 7.5))
+pyplot.rcParams['font.size'] = '12'
+ax.barh(feature_names, feat_importance)
+pyplot.xlabel('Importance')
+pyplot.ylabel('Feature')
+ax.set_title('Random Forest Feature Importance', fontsize=16)
+pyplot.show()
 ###############################################################################  
 # Let's use the tuned model above in step forward feature selection
 '''
-Why? Well, above I found the important features but correlated features 
+Why? Above I found the important features but correlated features 
 will be given equal or similar importance. My goal with using stepwise 
 forward selection in conjunction with this tuned RF model is to cut out
 some of these correlated features. My idea is that a variable which is 
@@ -166,8 +195,7 @@ sfs1 = sfs1.fit(X_train, y_train)
 feat_cols = list(sfs1.k_feature_idx_)
 print(X_train.columns[feat_cols])
 '''
-Index(['Rect', 'BordLngth', 'NDVI_40', 'ShpIndx_100', 'Mean_NIR_140'], 
-      dtype='object')
+Index(['Area', 'NDVI_40', 'Round_60', 'BordLngth_100', 'Mean_NIR_120'], dtype='object')
 '''
 # Reduce features to the 5 best found using SFFS
 clf_sfs.fit(X_train.iloc[:, feat_cols], y_train)
@@ -177,10 +205,10 @@ print('Training accuracy on selected features: %.3f' % acc(y_train, y_train_pred
 # 100%
 y_test_pred = clf_sfs.predict(X_test.iloc[:, feat_cols])
 print('Testing accuracy on selected features: %.3f' % acc(y_test, y_test_pred))
-# 75.5%
+# 74.4%
 '''
 Compared to the RF trained on the full set of variables, this does have a 
-reduced test accuracy of approximately 4.6 percent. Depending on our goal,
+reduced test accuracy of approximately 6.29 percent. Depending on our goal,
 this may or may not be beneficial to us. If training a NN with all of the 
 variables is costly, then just taking these 5 important variables would work. 
 
@@ -205,11 +233,11 @@ for i in np.argsort(feature_importances)[::-1]:
           {feature_importances[i]:.3f}')
     
 '''
-	NDVI_40: 0.366
-	Mean_NIR_120: 0.272
-	BordLngth: 0.154
-	ShpIndx_100: 0.134
-	Rect: 0.074
+	NDVI_40:           0.366
+	Mean_NIR_120:           0.264
+	Area:           0.183
+	BordLngth_100:           0.122
+	Round_60:           0.065
 '''
 
 # Feature Importance plot
@@ -218,22 +246,22 @@ pyplot.rcParams['font.size'] = '12'
 ax.barh(feature_names, reduced_feat_importance)
 pyplot.xlabel('Importance')
 pyplot.ylabel('Feature')
-ax.set_title('Random Forest Feature Importance', fontsize=16)
+ax.set_title('Random Forest/SFFS Feature Importance', fontsize=16)
 pyplot.show()
 
 '''
 What has been learned at this point? 
 
 Of the 5 most important variables according to RF + sequential feature 
-selection, 3 are shape variables and 2 are spectral variables. 
+selection, 2 are shape variables, 1 size, and 2 are spectral variables. 
 
 My limited knowledge required that I research these spectral variables. 
 The most important feature, NDVI_40 assesses whether or not the target being 
 observed contains live green vegetation. Recall that two of the class 
-variables are tree and grass. I would assume that the variable Rect 
-would do well with buildings and cars--with the help of border length and 
-shape index. Even after research I'm not sure I understand what sort of info
-a near infrared sensor captures. It seems to measure (mean?) distance to target 
+variables are tree and grass. I would assume that the variable Area
+would do well with buildings and cars. The variable Round40 measures roundness.
+Even after research I'm not sure I understand what sort of info
+a near infrared sensor captures. It seems to measure (mean) distance to target 
 surfaces? Perhaps this can help classify the flat land cover classes like
 pool and concrete. Of course all these variables are working together,
 I am only trying to make sense of the variables for my own understanding.
@@ -281,6 +309,7 @@ for j in  range(B):
     F_boot[j] = F(y, lab_boot)
     
 p_boot = np.mean(F_boot > Fstat)
+# 0
 ###############################################################################
 # Pollution and Mortality Rate data
 ###############################################################################
@@ -353,39 +382,63 @@ pollution_df = pollution_df.apply(pd.to_numeric)
 # pair plot
 sb.pairplot(pollution_df) # doesn't look very helpful/ no polynomial rel.
 
+# scale data
+scaler = StandardScaler()
+pollution_df = pd.DataFrame(scaler.fit_transform(pollution_df), columns = names)
 # split into train/test -- 20% reserved for testing
 X_train, X_test, y_train, y_test = train_test_split(\
         pollution_df.iloc[:, 0:15], pollution_df.iloc[:, 15], test_size=0.2)
 ###############################################################################
 # Ridge Regression and tuning of L2 penalty
+
+# plot ridge coef as a function of regularization
+n_alp = 200
+alp = np.logspace(-5, 2, n_alp)
+
+coefs = []
+model = Ridge()
+# alp = [.0001, 0.001,0.01, 0.01, 1]
+# alp = np.array(alp)
+for a in alp:
+    model.set_params(alpha=a)
+    model.fit(X_train, y_train)
+    coefs.append(model.coef_)
+    
+ax = pyplot.gca()
+ax.plot(alp*2, coefs)
+ax.set_xscale('log')
+pyplot.axis('tight')
+pyplot.xlabel('alpha')
+pyplot.ylabel('weights')
+ax.set_title('Ridge Coefficients as a Function of Regularization', fontsize=16)
+
+# find optimal model
 model = Ridge()
 # define model evaluation method
 cv = RepeatedKFold(n_splits=10, n_repeats=3, random_state=1)
 # define grid
-grid = dict()
-grid['alpha'] = np.arange(1000, 2000, 1) 
+grid = {
+    'alpha': list(alp),
+'solver':['auto', 'svd', 'cholesky', 'lsqr', 'sparse_cg', 'sag', 'saga']
+       }
 # interval endpoints picked by trial/error
 # define search
 import sklearn
 sorted(sklearn.metrics.SCORERS.keys())
-search = GridSearchCV(model, grid, scoring='neg_mean_squared_error', cv=cv, n_jobs=-1)
+search = GridSearchCV(model, grid, scoring='r2', cv=cv, n_jobs=-1)
 # ignore the negative sign in the score -- for optimization purposes only
 # perform the search
 results = search.fit(X_train, y_train)
 # summarize
-print('MSE: %.3f' % results.best_score_)
+print('r2: %.3f' % results.best_score_)
 print('Config: %s' % results.best_params_)
-# Alpha is so large, this may not be the best model for the data.
-# This is because a large alpha will shrink coefficients near zero.
-# We know that as \alpha \to \infty, the coefficients approach 0. 
 
-# Let's get a visual to see if this is the case
-best_model = Ridge(alpha=1733)
+best_model = Ridge(alpha=0.2122, solver='lsqr')
 best_model.fit(X_train, y_train)
 best_model.coef_
 
-c = pd.DataFrame(best_model.coef_, index = X_train.columns, columns= ['coefs'])
-ridge_feature = c.index[np.nonzero(np.array(c))[0]]
+c = pd.DataFrame(best_model.coef_, index = names[:-1], columns= ['coefs'])
+ridge_feature = names[:-1]
 ridge_coefs = c.iloc[np.nonzero(np.array(c))[0]]
 
 fig, ax = pyplot.subplots(figsize=(12, 7.5))
@@ -396,18 +449,17 @@ pyplot.ylabel('Feature')
 ax.set_title('Ridge Feature Importance', fontsize=16)
 pyplot.show()
 
-# Actually, looks okay. Let's see the train/test MSE.
+# Let's see the train/test MSE.
 y_train_pred = best_model.predict(X_train)
 np.mean((y_train - y_train_pred)**2)
-# 1272.56
+# 0.0075
 y_test_pred = best_model.predict(X_test)
 np.mean((y_test - y_test_pred)**2)
-# 3007.48
-
+# 0.00596
 '''
 What has been learned from these results? 
-The average tempurature in Jan, July, and avg annual precip.
-have the most influence on mortality rate. Then ext most important
+The average tempurature in Jan, July, and education
+have the most influence on mortality rate. The next most important
 variables are avg. household size, med. school years completed,
 non-white pop., % employed white collar, % poor, nitric oxides, and
 annual humidity. 
@@ -469,6 +521,10 @@ yhat = polyreg.predict(x.reshape(-1,1))
 
 pyplot.plot(x, y,'k.')
 pyplot.plot(x,yhat,'b-')
+pyplot.title("Polynomial regression - degree 2")
+
+# find mse
+np.mean(np.power((yhat - y), 2)) # 13964
 
 # I'm not sure about this. The data is very much hot/cold with its measurements
 # for sulfur oxide. Perhaps as spline would fit this better.
@@ -481,22 +537,36 @@ xmin, xmax = x.min(), x.max()
 xs = np.linspace(xmin, xmax, N)
 spline = interpolate.BSpline(t, c, k, extrapolate=False)
 
+yhat = spline(xs)
 pyplot.plot(x, y, 'k.')
-pyplot.plot(xs, spline(xs), 'b')
+pyplot.plot(xs, yhat, 'b')
+pyplot.title("Spline - degree 3")
 
 # It definitely looks like a spline with degree 3 would predict this
 # (have lower MSE) better than the polynomial regression with degree 2. 
 ###############################################################################
 # Fit a NN to pollution data
-m = neural_network.MLPRegressor(
-    hidden_layer_sizes=(10),
-    learning_rate_init = 0.001,
-    max_iter = 10000)
 
-m.fit(X_train,y_train)
+parameter_space = {
+    'hidden_layer_sizes': [(20, 10), (10,), (8,)],
+    'activation': ['tanh', 'relu', 'logistic'],
+    'alpha' : [0.00001, 0.00005, 0.0001, 0.0005],
+    'learning_rate_init' : [0.0001, 0.001, 0.00001]
+}
+mlp = neural_network.MLPRegressor(
+    max_iter = 1000000)
+clf = GridSearchCV(mlp, parameter_space, n_jobs=-1, cv=10)
+clf.fit(X_train, y_train)
+print('Best parameters found:\n', clf.best_params_)
+'''
+Best parameters found:
+ {'activation': 'logistic', 'hidden_layer_sizes': (20, 10), 'learning_rate_init': 0.001}
+'''
+# mean train error
+1 - clf.score(X_train, y_train) # 0.009
 # mean test error
-1 - m.score(X_test, y_test) # 0.01
-# a 1 percent test error is not bad at all
+1 - clf.score(X_test, y_test) # 0.00766
+# test error is not bad at all
 ###############################################################################
 # Zoology data
 ###############################################################################
@@ -741,7 +811,6 @@ pyplot.scatter(U[:,0],U[:,1], c = color_vec, cmap='rainbow')
 # If our classes were able to be clustered accurately by distance then
 # this would be great. 
 from sklearn.cluster import KMeans
-
 kmeans = KMeans(n_clusters=7, random_state=0).fit(U)
 kmeans.labels_[:20]
 
@@ -752,13 +821,22 @@ np.mean(np.power(y_act - pred, 2)) # 4.138
 t = (y_act - pred == 0)*1
 np.sum(t)/len(pred) # 0.472
 
-
+# an experiment with spectral clustering using jaccard similarity
 from sklearn.cluster import SpectralClustering
 clustering = SpectralClustering(n_clusters=7,
          affinity='precomputed').fit(1-jac_sim)
 clustering.labels_
 
 confusion_matrix(y_act, clustering.labels_)
+'''
+array([[21,  0,  0,  0,  1, 19,  0],
+       [ 0,  0, 20,  0,  0,  0,  0],
+       [ 6,  0,  0,  0,  0,  0, 11],
+       [ 0,  0,  0, 20,  0,  0,  0],
+       [ 0,  0,  0,  0,  0,  0, 10],
+       [ 0, 20,  0,  0,  0,  0,  0],
+       [ 2,  4,  0,  0, 10,  0,  0]], dtype=int64)
+'''
 
 # plot degree distribution
 def plot_degree_dist(G):
